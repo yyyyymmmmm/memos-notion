@@ -14,8 +14,6 @@ def fetch_memos():
         'Authorization': f'Bearer {MEMOS_API_TOKEN}'
     }
     response = requests.get(MEMOS_API_URL, headers=headers)
-    print(f"Response status code: {response.status_code}")
-    print(f"Response content: {response.content}")
     if response.status_code == 200:
         try:
             return response.json()
@@ -27,8 +25,27 @@ def fetch_memos():
         return []
 
 def extract_tags(content):
-    # 使用正则表达式提取以 # 开头的标签
     return re.findall(r'#(\w+)', content)
+
+def get_existing_titles():
+    url = f"https://api.notion.com/v1/databases/{NOTION_DATABASE_ID}/query"
+    headers = {
+        "Authorization": f"Bearer {NOTION_TOKEN}",
+        "Content-Type": "application/json",
+        "Notion-Version": "2021-08-16"
+    }
+    response = requests.post(url, headers=headers, json={})
+    if response.status_code == 200:
+        try:
+            results = response.json().get('results', [])
+            titles = [result['properties']['内容']['title'][0]['text']['content'] for result in results if '内容' in result['properties']]
+            return titles
+        except ValueError as e:
+            print(f"JSON decode error: {e}")
+            return []
+    else:
+        print(f"Failed to fetch existing titles: {response.status_code}, {response.text}")
+        return []
 
 def create_notion_page(content, tags, timestamp):
     url = "https://api.notion.com/v1/pages"
@@ -37,35 +54,20 @@ def create_notion_page(content, tags, timestamp):
         "Content-Type": "application/json",
         "Notion-Version": "2021-08-16"
     }
-
-    # 转换时间戳为 ISO 8601 日期字符串
     date_str = datetime.utcfromtimestamp(timestamp).isoformat()
-
-    # 使用 Memo 内容的前 10 个字符作为标题
     title = content[:10]
-
     data = {
         "parent": {"database_id": NOTION_DATABASE_ID},
-        "icon": {
-            "emoji": "😸"
-        },
+        "icon": {"emoji": "😸"},
         "properties": {
             "内容": {
-                "title": [
-                    {
-                        "text": {
-                            "content": title
-                        }
-                    }
-                ]
+                "title": [{"text": {"content": title}}]
             },
             "标签": {
                 "multi_select": [{"name": tag} for tag in tags]
             },
             "时间": {
-                "date": {
-                    "start": date_str
-                }
+                "date": {"start": date_str}
             }
         },
         "children": [
@@ -73,14 +75,7 @@ def create_notion_page(content, tags, timestamp):
                 "object": "block",
                 "type": "paragraph",
                 "paragraph": {
-                    "text": [
-                        {
-                            "type": "text",
-                            "text": {
-                                "content": content
-                            }
-                        }
-                    ]
+                    "text": [{"type": "text", "text": {"content": content}}]
                 }
             }
         ]
@@ -93,11 +88,13 @@ def create_notion_page(content, tags, timestamp):
 
 def main():
     memos = fetch_memos()
+    existing_titles = get_existing_titles()
     for memo in memos:
         content = memo.get('content', 'Untitled')
-        tags = extract_tags(content)
-        timestamp = memo.get('createdTs', 0)
-        create_notion_page(content, tags, timestamp)
+        if content[:10] not in existing_titles:
+            tags = extract_tags(content)
+            timestamp = memo.get('createdTs', 0)
+            create_notion_page(content, tags, timestamp)
     print("运行结束")
 
 if __name__ == "__main__":
