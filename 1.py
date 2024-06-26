@@ -38,14 +38,14 @@ def get_existing_titles():
     if response.status_code == 200:
         try:
             results = response.json().get('results', [])
-            titles = [result['properties']['内容']['title'][0]['text']['content'] for result in results if '内容' in result['properties']]
+            titles = {result['properties']['内容']['title'][0]['text']['content'] for result in results if '内容' in result['properties']}
             return titles
         except ValueError as e:
             print(f"JSON decode error: {e}")
-            return []
+            return set()
     else:
         print(f"Failed to fetch existing titles: {response.status_code}, {response.text}")
-        return []
+        return set()
 
 def create_notion_page(content, tags, timestamp):
     url = "https://api.notion.com/v1/pages"
@@ -91,10 +91,12 @@ def main():
     existing_titles = get_existing_titles()
     for memo in memos:
         content = memo.get('content', 'Untitled')
-        if content[:10] not in existing_titles:
+        title_snippet = content[:10]
+        if title_snippet not in existing_titles:
             tags = extract_tags(content)
             timestamp = memo.get('createdTs', 0)
             create_notion_page(content, tags, timestamp)
+            existing_titles.add(title_snippet)
     print("运行结束")
 
 if __name__ == "__main__":
