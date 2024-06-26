@@ -2,12 +2,11 @@ import requests
 from datetime import datetime
 import re
 import os
-import time
 
 # 配置
 MEMOS_API_URL = 'https://memos.fenfa888.xyz/api/v1/memo'
-MEMOS_API_TOKEN = 'your_memos_api_token'  # 直接使用实际的token进行测试
-NOTION_TOKEN = 'your_notion_token'  # 直接使用实际的token进行测试
+MEMOS_API_TOKEN = 'your_memos_api_token'  # 请替换为实际的 MEMOS API 令牌
+NOTION_TOKEN = 'your_notion_token'  # 请替换为实际的 Notion API 令牌
 NOTION_DATABASE_ID = 'a0f22cc5d084455fa4e34b958a9a82d3'
 WECHAT_WEBHOOK_URL = 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=d1dac968-5e65-47e9-bab0-568041e0d4bb'
 
@@ -91,13 +90,15 @@ def create_notion_page(content, tags, timestamp):
     response = requests.post(url, headers=headers, json=data)
     if response.status_code == 200:
         print("Page created successfully.")
+        return True
     else:
         print(f"Failed to create page: {response.status_code}, {response.text}")
+        return False
 
 def send_wechat_notification(start_time, end_time, original_count, new_count, tags_count):
     duration = end_time - start_time
     duration_minutes = duration.total_seconds() / 60
-    tags_summary = "\n".join([f"{tag}: {count} 条" for tag, count in tags_count.items()])
+    tags_summary = "\n".join([f"- {tag}: {count} 条" for tag, count in tags_count.items()])
 
     message = {
         "msgtype": "markdown",
@@ -109,7 +110,7 @@ def send_wechat_notification(start_time, end_time, original_count, new_count, ta
 - 今日新增数据: {new_count} 条
 
 **标签统计**
-{tags_summary}
+{tags_summary if tags_summary else '无标签'}
 """
         }
     }
@@ -122,9 +123,10 @@ def send_wechat_notification(start_time, end_time, original_count, new_count, ta
 def main():
     start_time = datetime.now()
     
-    memos = fetch_memos()
     existing_notion_entries = get_existing_notion_entries()
     original_count = len(existing_notion_entries)
+    
+    memos = fetch_memos()
     new_count = 0
     tags_count = {}
 
@@ -134,13 +136,13 @@ def main():
         if not any(entry['title'] == title_snippet and entry['content'] == content for entry in existing_notion_entries):
             tags = extract_tags(content)
             timestamp = memo.get('createdTs', 0)
-            create_notion_page(content, tags, timestamp)
-            new_count += 1
-            for tag in tags:
-                if tag in tags_count:
-                    tags_count[tag] += 1
-                else:
-                    tags_count[tag] = 1
+            if create_notion_page(content, tags, timestamp):
+                new_count += 1
+                for tag in tags:
+                    if tag in tags_count:
+                        tags_count[tag] += 1
+                    else:
+                        tags_count[tag] = 1
 
     end_time = datetime.now()
     send_wechat_notification(start_time, end_time, original_count, new_count, tags_count)
