@@ -6,8 +6,8 @@ import time
 
 # 配置
 MEMOS_API_URL = 'https://memos.fenfa888.xyz/api/v1/memo'
-MEMOS_API_TOKEN = os.getenv('MEMOS_API_TOKEN')
-NOTION_TOKEN = os.getenv('NOTION_TOKEN')
+MEMOS_API_TOKEN = 'your_memos_api_token'  # 直接使用实际的token进行测试
+NOTION_TOKEN = 'your_notion_token'  # 直接使用实际的token进行测试
 NOTION_DATABASE_ID = 'a0f22cc5d084455fa4e34b958a9a82d3'
 WECHAT_WEBHOOK_URL = 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=d1dac968-5e65-47e9-bab0-568041e0d4bb'
 
