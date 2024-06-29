@@ -115,4 +115,4 @@ def create_notion_page(memos_id, content, tags, timestamp):
         return False
 
 # 发送运行结果通知
-def send_wechat_notification(start_time, end_time, original_count
+def send_wechat_notification(start_time, end_time, original_count)
