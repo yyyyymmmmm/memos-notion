@@ -30,7 +30,7 @@ def fetch_memos():
 def extract_tags(content):
     return re.findall(r'#(\w+)', content)
 
-# 获取现有的Notion条目
+# 获取现有的Notion条目（支持分页）
 def get_existing_notion_entries():
     url = f"https://api.notion.com/v1/databases/{NOTION_DATABASE_ID}/query"
     headers = {
@@ -38,25 +38,36 @@ def get_existing_notion_entries():
         "Content-Type": "application/json",
         "Notion-Version": "2021-08-16"
     }
-    response = requests.post(url, headers=headers, json={})
-    if response.status_code == 200:
-        try:
-            results = response.json().get('results', [])
-            entries = [
-                {
-                    'id': result['properties']['MemosID']['rich_text'][0]['text']['content'],
-                    'title': result['properties']['内容']['title'][0]['text']['content'],
-                    'content': result['children'][0]['paragraph']['text'][0]['text']['content'] if result.get('children') else ''
-                }
-                for result in results if '内容' in result['properties'] and 'MemosID' in result['properties']
-            ]
-            return entries
-        except ValueError as e:
-            print(f"JSON decode error: {e}")
-            return []
-    else:
-        print(f"Failed to fetch existing Notion entries: {response.status_code}, {response.text}")
-        return []
+    entries = []
+    has_more = True
+    next_cursor = None
+
+    while has_more:
+        payload = {"page_size": 100}
+        if next_cursor:
+            payload["start_cursor"] = next_cursor
+
+        response = requests.post(url, headers=headers, json=payload)
+        if response.status_code == 200:
+            try:
+                data = response.json()
+                results = data.get('results', [])
+                entries.extend([
+                    {
+                        'id': result['properties']['MemosID']['rich_text'][0]['text']['content'],
+                        'content': result['children'][0]['paragraph']['text'][0]['text']['content'] if result.get('children') else ''
+                    }
+                    for result in results if '内容' in result['properties'] and 'MemosID' in result['properties']
+                ])
+                has_more = data.get('has_more', False)
+                next_cursor = data.get('next_cursor', None)
+            except ValueError as e:
+                print(f"JSON decode error: {e}")
+                break
+        else:
+            print(f"Failed to fetch existing Notion entries: {response.status_code}, {response.text}")
+            break
+    return entries
 
 # 创建新的Notion页面
 def create_notion_page(memos_id, content, tags, timestamp):
@@ -104,7 +115,7 @@ def create_notion_page(memos_id, content, tags, timestamp):
         return False
 
 # 发送运行结果通知
-def send_wechat_notification(start_time, end_time, original_count, new_count, tags_count):
+def send_wechat_notification(start_time, end_time, original_count, new_count, total_count, tags_count):
     duration = end_time - start_time
     duration_minutes = duration.total_seconds() / 60
     tags_summary = "\n".join([f"- {tag}: {count} 条" for tag, count in tags_count.items()])
@@ -117,6 +128,7 @@ def send_wechat_notification(start_time, end_time, original_count, new_count, ta
 - 运行时间: {duration_minutes:.2f} 分钟
 - Notion 原有数据: {original_count} 条
 - 今日新增数据: {new_count} 条
+- 共有数据: {total_count} 条
 
 **标签统计**
 {tags_summary if tags_summary else '无标签'}
@@ -134,7 +146,7 @@ def main():
     start_time = datetime.now()
     
     existing_notion_entries = get_existing_notion_entries()
-    existing_ids = {entry['id'] for entry in existing_notion_entries}
+    existing_ids_contents = {(entry['id'], entry['content']) for entry in existing_notion_entries}
     original_count = len(existing_notion_entries)
     
     memos = fetch_memos()
@@ -143,13 +155,13 @@ def main():
 
     for memo in memos:
         memos_id = str(memo.get('id', ''))
-        if memos_id not in existing_ids:
-            content = memo.get('content', 'Untitled')
+        content = memo.get('content', 'Untitled')
+        if (memos_id, content) not in existing_ids_contents:
             tags = extract_tags(content)
             timestamp = memo.get('createdTs', 0)
             if create_notion_page(memos_id, content, tags, timestamp):
                 new_count += 1
-                existing_ids.add(memos_id)
+                existing_ids_contents.add((memos_id, content))
                 for tag in tags:
                     if tag in tags_count:
                         tags_count[tag] += 1
@@ -157,7 +169,8 @@ def main():
                         tags_count[tag] = 1
 
     end_time = datetime.now()
-    send_wechat_notification(start_time, end_time, original_count, new_count, tags_count)
+    total_count = original_count + new_count
+    send_wechat_notification(start_time, end_time, original_count, new_count, total_count, tags_count)
     print("运行结束")
 
 if __name__ == "__main__":
