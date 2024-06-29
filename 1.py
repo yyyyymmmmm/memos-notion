@@ -53,11 +53,8 @@ def get_existing_notion_entries():
                 data = response.json()
                 results = data.get('results', [])
                 entries.extend([
-                    {
-                        'id': result['properties']['MemosID']['rich_text'][0]['text']['content'],
-                        'content': result['children'][0]['paragraph']['text'][0]['text']['content'] if result.get('children') else ''
-                    }
-                    for result in results if '内容' in result['properties'] and 'MemosID' in result['properties']
+                    result['properties']['MemosID']['rich_text'][0]['text']['content']
+                    for result in results if 'MemosID' in result['properties']
                 ])
                 has_more = data.get('has_more', False)
                 next_cursor = data.get('next_cursor', None)
@@ -146,9 +143,8 @@ def main():
     start_time = datetime.now()
     
     # 获取现有的Notion条目
-    existing_notion_entries = get_existing_notion_entries()
-    existing_ids_contents = {(entry['id'], entry['content']) for entry in existing_notion_entries}
-    original_count = len(existing_notion_entries)
+    existing_notion_ids = get_existing_notion_entries()
+    original_count = len(existing_notion_ids)
     
     # 获取Memos数据
     memos = fetch_memos()
@@ -158,12 +154,12 @@ def main():
     for memo in memos:
         memos_id = str(memo.get('id', ''))
         content = memo.get('content', 'Untitled')
-        if (memos_id, content) not in existing_ids_contents:
+        if memos_id not in existing_notion_ids:
             tags = extract_tags(content)
             timestamp = memo.get('createdTs', 0)
             if create_notion_page(memos_id, content, tags, timestamp):
                 new_count += 1
-                existing_ids_contents.add((memos_id, content))
+                existing_notion_ids.append(memos_id)
                 for tag in tags:
                     if tag in tags_count:
                         tags_count[tag] += 1
